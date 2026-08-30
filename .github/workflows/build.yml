@@ -1,0 +1,51 @@
+name: build ss‑local musl‑aarch64
+
+on:
+  workflow_dispatch:  # 允许手动点击按钮触发编译
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu‑22.04
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # 拉取libev、libsodium等子模块，非常关键
+          fetch‑depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt‑get update
+          sudo apt‑get install ‑y make gcc g++ autoconf automake libtool bzip2 wget xz‑utils file
+
+      - name: Build musl‑cross aarch64 toolchain
+        run: |
+          git clone https://github.com/richfelker/musl‑cross‑make.git
+          cd musl‑cross‑make
+          make TARGET=aarch64‑linux‑musl -j$(nproc)
+          make install
+          echo "$PWD/output/bin" >> $GITHUB_PATH
+
+      - name: Compile shadowsocks‑libev static
+        run: |
+          export CC=aarch64‑linux‑musl‑gcc
+          export CXX=aarch64‑linux‑musl‑g++
+          ./autogen.sh
+          ./configure \
+            --host=aarch64‑linux‑musl \
+            --enable‑static \
+            --disable‑shared
+          make -j$(nproc)
+
+      - name: Verify binary(static check)
+        run: |
+          file src/ss‑local
+          aarch64‑linux‑musl‑objdump -p src/ss‑local
+
+      - name: Upload artifact ss‑local
+        uses: actions/upload‑artifact@v4
+        with:
+          name: ss‑local‑musl‑aarch64
+          path: src/ss‑local
